@@ -2,7 +2,7 @@
 RAG Pipeline - Complete orchestration of all RAG components
 """
 
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 import os
 
 from app.rag.loaders import PDFLoader, WebLoader
@@ -48,7 +48,7 @@ class RAGPipeline:
         self.reranker = Reranker()
         
         print("="*50)
-        print("✅ RAG Pipeline Initialized")
+        print("RAG Pipeline Initialized")
         print(f"   Vector DB: {vector_db_type}")
         print(f"   Embedding: {self.embedding.model_name}")
         print(f"   Chunk Size: {chunk_size}")
@@ -59,7 +59,7 @@ class RAGPipeline:
         Index documents from various sources
         source: 'pdf', 'web', 'directory', 'sample'
         """
-        print("\n📚 INDEXING DOCUMENTS")
+        print("\nINDEXING DOCUMENTS")
         print("-"*40)
         
         # Step 1: Load documents
@@ -82,7 +82,7 @@ class RAGPipeline:
         else:
             raise ValueError(f"Unknown source: {source}")
         
-        print(f"📄 Loaded {len(documents)} documents")
+        print(f"Loaded {len(documents)} documents")
         
         # Step 2: Chunk documents
         all_chunks = []
@@ -90,24 +90,28 @@ class RAGPipeline:
             chunks = self.chunker.chunk_document(doc, strategy="recursive")
             all_chunks.extend(chunks)
         
-        print(f"✂️ Created {len(all_chunks)} chunks")
+        print(f"Created {len(all_chunks)} chunks")
         
         # Step 3: Generate embeddings
         texts = [chunk["text"] for chunk in all_chunks]
         embeddings = self.embedding.encode(texts)
         
-        print(f"🔄 Generated {len(embeddings)} embeddings")
+        print(f"Generated {len(embeddings)} embeddings")
         
         # Step 4: Store in vector database
         ids = [chunk["chunk_id"] for chunk in all_chunks]
         metadatas = [
-            {"source": chunk["source"], "chunk_index": chunk["chunk_index"]} 
+            {
+                "source": chunk["source"],
+                "chunk_index": chunk["chunk_index"],
+                "chunk_id": chunk["chunk_id"],
+            }
             for chunk in all_chunks
         ]
         
         self.vector_store.add_documents(ids, embeddings.tolist(), texts, metadatas)
         
-        print(f"💾 Stored {self.vector_store.count()} chunks")
+        print(f"Stored {self.vector_store.count()} chunks")
         print("="*50)
         
         return len(all_chunks)
@@ -116,7 +120,7 @@ class RAGPipeline:
         """
         Retrieve relevant documents for a query
         """
-        print(f"\n🔍 RETRIEVING: {query[:100]}")
+        print(f"\nRETRIEVING: {query[:100]}")
         print(f"   Hops: {hops}, Top K: {top_k}")
         
         # Retrieve
@@ -145,6 +149,56 @@ class RAGPipeline:
             result['citation'] = f"[{i}]"
         
         return results
+
+    async def search_with_reasoning(self, query: str, llm, hops: int = 2, top_k: int = 5) -> tuple:
+        """
+        Multi-hop retrieval with explicit second-hop queries (LLM-planned) + rerank + dedupe.
+        Returns (results, reasoning_path dict).
+        """
+        from app.utils.json_extract import extract_json_object
+
+        reasoning_path: List[Dict[str, Any]] = []
+        hop1 = self.retriever.single_hop(query, n_results=max(top_k, 5))
+        reasoning_path.append({"step": 1, "query": query, "hits": len(hop1)})
+
+        follow_ups: List[str] = []
+        entities: List[str] = []
+        if hop1 and hops >= 2:
+            preview = "\n".join(f"- {r.get('text', '')[:280]}" for r in hop1[:3])
+            plan_prompt = f"""Given the user question and first retrieval snippets, propose focused follow-up search phrases.
+Return compact JSON only:
+{{"entities": ["..."], "follow_up_queries": ["phrase1", "phrase2"]}}
+User question: {query}
+Snippets:
+{preview}
+JSON:"""
+            resp = await llm.generate(plan_prompt, temperature=0.1, max_tokens=200)
+            parsed = extract_json_object(resp.get("text") or "")
+            if parsed:
+                follow_ups = [str(x) for x in parsed.get("follow_up_queries") or []][:2]
+                entities = [str(x) for x in parsed.get("entities") or []][:5]
+            reasoning_path.append(
+                {"step": 2, "planned_queries": follow_ups, "entities": entities, "raw_plan": (resp.get("text") or "")[:400]}
+            )
+
+        merged: List[Dict] = list(hop1)
+        for fq in follow_ups:
+            merged.extend(self.retriever.single_hop(fq, n_results=top_k))
+
+        if not follow_ups and hops >= 2 and hop1:
+            concepts = self.retriever._extract_concepts(hop1)
+            refined = f"{query} {concepts}"
+            merged.extend(self.retriever.single_hop(refined, n_results=top_k))
+            reasoning_path.append({"step": 2, "fallback_query": refined})
+
+        merged = self.retriever.dedupe_results(merged)
+        if merged:
+            merged = self.reranker.rerank(query, merged)
+        merged = merged[:top_k]
+        for i, result in enumerate(merged, 1):
+            result["citation"] = f"[{i}]"
+        reasoning_path.append({"step": 3, "after_dedupe": len(merged)})
+        return merged, {"hops_executed": min(hops, 2), "path": reasoning_path}
     
     def get_status(self) -> Dict:
         """Get pipeline status"""
@@ -183,5 +237,30 @@ class RAGPipeline:
                 "id": "robotics_comparison",
                 "text": "For robotics applications, reinforcement learning excels for sequential decision-making tasks like navigation and manipulation. Supervised learning is better for perception tasks like object detection and recognition. Hybrid approaches combining both are becoming popular in advanced robotics systems.",
                 "source": "sample/robotics_journal"
-            }
+            },
+            {
+                "id": "ai_intro",
+                "text": "Artificial intelligence (AI) is the field of creating systems that perform tasks requiring human-like reasoning, perception, or learning. Modern AI includes machine learning, deep learning, and retrieval-augmented systems.",
+                "source": "sample/ai_overview"
+            },
+            {
+                "id": "ml_intro",
+                "text": "Machine learning (ML) is a subset of AI where models learn patterns from data rather than being fully hand-programmed. Common paradigms include supervised, unsupervised, and reinforcement learning.",
+                "source": "sample/ml_overview"
+            },
+            {
+                "id": "rag_intro",
+                "text": "Retrieval-augmented generation (RAG) combines a retriever that fetches relevant documents with a language model that generates answers grounded in those documents, improving factual accuracy and traceability.",
+                "source": "sample/rag_overview"
+            },
+            {
+                "id": "earth_science",
+                "text": "Earth is not flat; it is approximately an oblate spheroid. Evidence includes ships disappearing hull-first over the horizon, lunar eclipses showing Earth's round shadow, and satellite imagery.",
+                "source": "sample/geography"
+            },
+            {
+                "id": "basic_math",
+                "text": "In standard arithmetic on natural numbers, 2 + 2 equals 4. Claims that 2 + 2 equals 5 contradict elementary arithmetic without redefining symbols or using non-standard contexts.",
+                "source": "sample/math_facts"
+            },
         ]

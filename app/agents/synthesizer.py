@@ -35,20 +35,23 @@ class SynthesizerAgent(BaseAgent):
         claims_text = "\n".join([f"- {c.text}" for c in context.claims])
         critiques_text = "\n".join([f"- Claim {c.claim_id}: {c.disagreement_reason}" for c in context.critiques])
         
-        prompt = f"""Synthesize a final answer from these claims, applying the critiques.
+        sources = "\n".join(
+            f"- {c.chunk_id}: {c.content[:400]}" for c in context.retrieved_chunks[:8]
+        )
+        prompt = f"""Synthesize a final answer using ONLY the claims and source snippets below.
+If information is missing, say what is missing—do not invent facts.
+Use bracket citations like [1] matching the claim order when possible.
 
 CLAIMS:
 {claims_text}
+
+SOURCE SNIPPETS:
+{sources}
 
 CRITIQUES (issues to fix):
 {critiques_text}
 
 ORIGINAL QUERY: {context.original_query}
-
-Create a clear, concise answer that:
-1. Resolves all contradictions
-2. Cites sources
-3. Is well-structured
 
 FINAL ANSWER:"""
         

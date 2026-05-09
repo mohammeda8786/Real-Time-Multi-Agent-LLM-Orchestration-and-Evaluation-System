@@ -36,11 +36,11 @@ class PDFLoader:
                 "pages": len(reader.pages)
             })
             
-            print(f"✅ Loaded PDF: {filepath} ({len(reader.pages)} pages)")
+            print(f"Loaded PDF: {filepath} ({len(reader.pages)} pages)")
             
         except ImportError:
             # Fallback to mock data if pypdf not installed
-            print(f"⚠️ pypdf not installed. Using mock data for {filepath}")
+            print(f"pypdf not installed. Using mock data for {filepath}")
             documents.append({
                 "id": os.path.basename(filepath),
                 "text": f"Sample content from {filepath}. Install pypdf for real PDF loading.",
@@ -48,7 +48,7 @@ class PDFLoader:
                 "type": "pdf_mock"
             })
         except Exception as e:
-            print(f"❌ Error loading PDF {filepath}: {e}")
+            print(f"Error loading PDF {filepath}: {e}")
         
         return documents
     

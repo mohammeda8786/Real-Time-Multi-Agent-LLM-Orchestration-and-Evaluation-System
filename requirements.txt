@@ -1,12 +1,29 @@
+# Mega.AI dependencies
+#
+# Supported Python: 3.11 and 3.12 (recommended). Python 3.13+ may work but Groq/Chroma/Pydantic
+# ecosystem warnings are common; 3.14 is largely untested — use 3.11 or 3.12 for production parity with Docker.
+#
+# Verify: python verify_environment.py
+# Diagnostics (with API running): GET http://localhost:8000/diagnostics
+#
+# Core runtime dependencies
 fastapi==0.104.1
 uvicorn==0.24.0
-pydantic==2.5.0
 python-dotenv==1.0.0
-groq==0.4.1
-chromadb==0.4.17
-sentence-transformers==2.2.2
-asyncio==3.4.3
-httpx==0.25.2
+
+# Stable LLM / HTTP client stack (pinned for httpx/groq compatibility)
+groq==0.11.0
+httpx==0.27.0
+
+# RAG retrieval stack
+chromadb==1.5.9
+pydantic>=2.7,<3
+sentence-transformers==3.0.1
+huggingface-hub>=0.23.0
+
+# Auxiliary runtime packages
 aiofiles==23.2.1
 psycopg2-binary==2.9.9
 sqlalchemy==2.0.23
+redis==5.0.1
+prometheus-client==0.20.0

@@ -42,10 +42,10 @@ class WebLoader:
                 "title": url
             })
             
-            print(f"✅ Loaded web page: {url}")
+            print(f"Loaded web page: {url}")
             
         except requests.Timeout:
-            print(f"❌ Timeout loading {url}")
+            print(f"Timeout loading {url}")
             documents.append({
                 "id": url,
                 "text": f"TIMEOUT: Could not load {url} within {self.timeout}s",
@@ -54,7 +54,7 @@ class WebLoader:
                 "error": "timeout"
             })
         except requests.RequestException as e:
-            print(f"❌ Error loading {url}: {e}")
+            print(f"Error loading {url}: {e}")
             documents.append({
                 "id": url,
                 "text": f"ERROR: {str(e)}",

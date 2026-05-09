@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 from typing import List, Dict, Any, Optional, Literal
 from datetime import datetime
 from enum import Enum
@@ -100,7 +100,10 @@ class RoutingDecision(BaseModel):
     expected_output_type: str
 
 class SharedContext(BaseModel):
+    model_config = ConfigDict()
+
     job_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    trace_id: str = ""
     original_query: str
     status: str = "initialized"
     
@@ -128,12 +131,16 @@ class SharedContext(BaseModel):
     
     # Policy violations
     policy_violations: List[Dict[str, Any]] = []
+
+    # Tool calls (orchestrator-mediated); persisted for eval and audits
+    tool_audit: List[Dict[str, Any]] = []
     
     # Timestamps
     created_at: datetime = Field(default_factory=datetime.now)
     completed_at: Optional[datetime] = None
-    
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
+
+    @model_validator(mode="after")
+    def _default_trace_id(self):
+        if not self.trace_id:
+            object.__setattr__(self, "trace_id", self.job_id)
+        return self

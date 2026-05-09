@@ -52,6 +52,6 @@ class Reranker:
             results.sort(key=lambda x: x["similarity_score"], reverse=True)
             
         except ImportError:
-            print("⚠️ CrossEncoder not available. Install: pip install sentence-transformers")
+            print("CrossEncoder not available. Install: pip install sentence-transformers")
         
         return results

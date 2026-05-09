@@ -1,67 +1,83 @@
-import asyncio
-import sys
-import os
-from app.agents.orchestrator import OrchestratorAgent
-from app.models.schemas import SharedContext 
+"""
+Demo orchestration run. Uses platform-safe console setup before loading Groq/Chroma.
+"""
 
-# Add parent directory to path
+import asyncio
+import logging
+import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from app.agents.orchestrator import OrchestratorAgent
-from app.models.schemas import SharedContext
+from app.platform.runtime import (
+    configure_runtime_warnings,
+    configure_stdio_utf8,
+    log_startup_stage,
+    stage_timer,
+    warn_unsupported_python,
+)
+
+configure_stdio_utf8()
+configure_runtime_warnings()
+logging.basicConfig(level=logging.INFO)
+warn_unsupported_python()
+
 
 async def main():
-    # Initialize orchestrator
+    t0 = stage_timer()
+    log_startup_stage("demo_import_orchestrator_begin")
+
+    from app.agents.orchestrator import OrchestratorAgent
+    from app.models.schemas import SharedContext
+
+    log_startup_stage(
+        "demo_import_orchestrator_done",
+        latency_ms=(stage_timer() - t0) * 1000,
+    )
+
     orchestrator = OrchestratorAgent()
-    
-    # Test query that requires all agents
-    query = "Compare the effectiveness of reinforcement learning versus supervised learning for robotics applications"
-    
-    # Create context
+    query = (
+        "Compare the effectiveness of reinforcement learning versus supervised learning "
+        "for robotics applications"
+    )
     context = SharedContext(original_query=query)
-    result = await orchestrator.process(context)
-    print(result.synthesized_answer)
-    
-    # Define streaming callback
+
     async def stream_callback(event_type: str, data: dict):
-        # No asyncio.sleep needed here
-        message = data.get('message', data)
-        if 'token' in data:
-            # For token streaming, print without newline
-            print(data['token'], end='', flush=True)
+        if "token" in data:
+            print(data["token"], end="", flush=True)
         else:
-            print(f"\n[EVENT] {event_type}: {message}")
-    
-    try:
-        # Run orchestration
-        result = await orchestrator.process(context, stream_callback)
-        
-        # Display results
-        print("\n" + "="*50)
-        print("FINAL ANSWER:")
-        print("="*50)
-        print(result.synthesized_answer if result.synthesized_answer else "No answer generated")
-        
-        if result.provenance_map:
-            print("\n" + "="*50)
-            print("PROVENANCE MAP (First 3 entries):")
-            print("="*50)
-            for link in result.provenance_map[:3]:
-                print(f"\nSentence: {link.sentence[:100]}...")
-                print(f"Source Agent: {link.source_agent.value}")
-                if link.source_chunks:
-                    print(f"Source Chunks: {', '.join(link.source_chunks[:2])}")
-        
-        print("\n" + "="*50)
-        print(f"Status: {result.status}")
-        print(f"Total claims: {len(result.claims)}")
-        print(f"Total critiques: {len(result.critiques)}")
-        print(f"Total policy violations: {len(result.policy_violations)}")
-        
-    except Exception as e:
-        print(f"\nError: {e}")
-        import traceback
-        traceback.print_exc()
+            msg = data.get("message", data)
+            print(f"\n[EVENT] {event_type}: {msg}")
+
+    print("Running orchestration with streaming events...\n")
+    t_run = stage_timer()
+    result = await orchestrator.process(context, stream_callback)
+    log_startup_stage(
+        "demo_orchestration_complete",
+        latency_ms=(stage_timer() - t_run) * 1000,
+    )
+
+    print("\n" + "=" * 50)
+    print("FINAL ANSWER:")
+    print("=" * 50)
+    print(result.synthesized_answer or "No answer generated")
+
+    if result.provenance_map:
+        print("\n" + "=" * 50)
+        print("PROVENANCE (sample):")
+        print("=" * 50)
+        for link in result.provenance_map[:3]:
+            print(f"\nSentence: {(link.sentence or '')[:100]}...")
+            print(f"Source Agent: {link.source_agent.value}")
+            if link.source_chunks:
+                print(f"Source Chunks: {', '.join(link.source_chunks[:2])}")
+
+    print("\n" + "=" * 50)
+    print(f"Status: {result.status}")
+    print(f"Job / trace id: {result.job_id}")
+    print(f"Claims: {len(result.claims)} | Critiques: {len(result.critiques)}")
+    print(f"Policy violations: {len(result.policy_violations)} | Tool events: {len(result.tool_audit)}")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

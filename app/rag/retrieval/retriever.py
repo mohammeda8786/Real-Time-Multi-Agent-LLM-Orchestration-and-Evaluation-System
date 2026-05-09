@@ -3,6 +3,8 @@ Retriever - Multi-hop document retrieval
 """
 
 from typing import List, Dict
+import hashlib
+import re
 import numpy as np
 
 class Retriever:
@@ -43,15 +45,23 @@ class Retriever:
             hop3_results = self.single_hop(deep_query, n_results_per_hop)
             all_results.extend(hop3_results)
         
-        # Remove duplicates by text content
+        return self.dedupe_results(all_results)
+
+    def dedupe_results(self, results: List[Dict]) -> List[Dict]:
+        """Deduplicate by chunk_id when present, else normalized full-text hash."""
         seen = set()
         unique_results = []
-        for result in all_results:
-            text_preview = result["text"][:100]
-            if text_preview not in seen:
-                seen.add(text_preview)
-                unique_results.append(result)
-        
+        for result in results:
+            cid = result.get("chunk_id") or result.get("metadata", {}).get("chunk_id")
+            if cid:
+                key = f"id:{cid}"
+            else:
+                norm = re.sub(r"\s+", " ", (result.get("text") or "").strip().lower())
+                key = hashlib.sha256(norm.encode("utf-8")).hexdigest()
+            if key in seen:
+                continue
+            seen.add(key)
+            unique_results.append(result)
         return unique_results
     
     def _extract_concepts(self, results: List[Dict]) -> str:

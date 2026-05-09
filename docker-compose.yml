@@ -1,6 +1,19 @@
 version: '3.8'
 
 services:
+  redis:
+    image: redis:7-alpine
+    container_name: mega_ai_redis
+    ports:
+      - "6379:6379"
+    networks:
+      - mega_ai_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
   api:
     build:
       context: .
@@ -13,12 +26,18 @@ services:
       - LLM_MODEL=${LLM_MODEL:-llama-3.1-70b-versatile}
       - ENVIRONMENT=production
       - LOG_LEVEL=INFO
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql://mega_ai_user:${DB_PASSWORD:-secure_password}@database:5432/mega_ai
     volumes:
       - ./chroma_db:/app/chroma_db
       - ./logs:/app/logs
     depends_on:
-      - database
-      - chromadb
+      database:
+        condition: service_healthy
+      chromadb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     command: python -m uvicorn api:app --host 0.0.0.0 --port 8000 --reload
     networks:
       - mega_ai_network
@@ -75,6 +94,7 @@ services:
       - GROQ_API_KEY=${GROQ_API_KEY}
       - LLM_MODEL=${LLM_MODEL:-llama-3.1-70b-versatile}
       - DATABASE_URL=postgresql://mega_ai_user:${DB_PASSWORD:-secure_password}@database:5432/mega_ai
+      - REDIS_URL=redis://redis:6379/0
       - ENVIRONMENT=production
       - LOG_LEVEL=INFO
     volumes:
@@ -84,6 +104,8 @@ services:
       database:
         condition: service_healthy
       chromadb:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     networks:
       - mega_ai_network

@@ -1,5 +1,10 @@
 FROM python:3.11-slim
 
+# Match supported runtime (3.11); UTF-8 for logs and JSON in containers
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
+ENV PYTHONIOENCODING=utf-8
+
 WORKDIR /app
 
 # Install system dependencies

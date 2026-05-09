@@ -4,73 +4,86 @@ Run: python run_evaluation.py
 """
 
 import asyncio
-import json
+import logging
 import sys
 from datetime import datetime
 
-print("\n" + "="*70)
+from app.platform.runtime import configure_runtime_warnings, configure_stdio_utf8, warn_unsupported_python
+
+configure_stdio_utf8()
+configure_runtime_warnings()
+logging.basicConfig(level=logging.INFO)
+warn_unsupported_python()
+
+print("\n" + "=" * 70)
 print("MEGA.AI - FULL EVALUATION PIPELINE")
-print("="*70 + "\n")
+print("=" * 70 + "\n")
+
 
 async def main():
     from app.agents.orchestrator import OrchestratorAgent
     from app.evaluation.pipeline import EvaluationPipeline
     from app.meta.prompt_optimizer import SelfImprovingPromptLoop
-    
-    # Initialize components
+
     orchestrator = OrchestratorAgent()
     eval_pipeline = EvaluationPipeline()
     prompt_optimizer = SelfImprovingPromptLoop()
-    
-    print("📊 STEP 1: Running Evaluation on All 15 Test Cases")
+    proposals = []
+
+    print("[STEP 1] Running evaluation on all 15 test cases")
     print("-" * 70)
-    
+
     try:
-        # Run evaluation
         results = await eval_pipeline.run_evaluation(orchestrator)
-        
-        print(f"\n✅ Evaluation Complete!")
+
+        print("\n[OK] Evaluation complete")
         print(f"   Run ID: {results['eval_id']}")
         print(f"   Timestamp: {results['timestamp']}")
         print(f"   Total tests: {results['total_tests']}")
-        
-        # Print by category
-        print(f"\n📈 Results by Category:")
-        for category, stats in results['by_category'].items():
-            avg_score = stats['average_score']
-            print(f"   • {category.upper()}: {avg_score:.2%} ({stats['count']} tests)")
-        
-        # Print dimension averages
-        print(f"\n📊 Overall Scores by Dimension:")
-        for dimension, score in sorted(results['overall_scores'].items()):
+
+        print("\n[CATEGORY] Results by category:")
+        for category, stats in results["by_category"].items():
+            avg_score = stats["average_score"]
+            print(f"   - {category.upper()}: {avg_score:.2%} ({stats['count']} tests)")
+
+        print("\n[DIMENSIONS] Overall scores:")
+        for dimension, score in sorted(results["overall_scores"].items()):
             bar_length = int(score * 20)
-            bar = "█" * bar_length + "░" * (20 - bar_length)
-            print(f"   • {dimension:30} {bar} {score:.2%}")
-        
-        # Print best/worst
-        print(f"\n🏆 Best Performers:")
-        for performer in results['best_performers'][:3]:
-            print(f"   • {performer['test_id']}: {performer['score']:.2%}")
-        
-        print(f"\n⚠️  Worst Performers (needs improvement):")
-        for performer in results['worst_performers'][:3]:
-            print(f"   • {performer['test_id']}: {performer['score']:.2%}")
-    
+            bar = "#" * bar_length + "-" * (20 - bar_length)
+            print(f"   - {dimension:30} {bar} {score:.2%}")
+
+        print("\n[BEST] Top performers:")
+        for performer in results["best_performers"][:3]:
+            print(f"   - {performer['test_id']}: {performer['score']:.2%}")
+
+        print("\n[WARN] Lowest performers:")
+        for performer in results["worst_performers"][:3]:
+            print(f"   - {performer['test_id']}: {performer['score']:.2%}")
+
+        if results.get("failure_detected"):
+            print(
+                f"\n[WARN] Threshold failures: {results.get('failed_tests', 0)} test(s); see persisted eval cases[]."
+            )
+        else:
+            print("\n[OK] All tests within configured thresholds.")
+
     except Exception as e:
-        print(f"\n❌ Evaluation failed: {e}")
+        print(f"\n[ERROR] Evaluation failed: {e}")
         import traceback
+
         traceback.print_exc()
         return
-    
-    # Step 2: Analyze failures
-    print(f"\n\n🔍 STEP 2: Analyzing Failures and Proposing Rewrites")
+
+    print(f"\n\n[STEP 2] Analyzing failures and proposing rewrites")
     print("-" * 70)
-    
+
     try:
         proposals = await prompt_optimizer.analyze_failures(eval_pipeline)
-        
+
+        failing_tests = eval_pipeline.get_failing_tests()
+
         if proposals:
-            print(f"\n✅ Generated {len(proposals)} prompt rewrite proposals:")
+            print(f"\n[OK] Generated {len(proposals)} prompt rewrite proposals:")
             for prop in proposals:
                 print(f"\n   Proposal ID: {prop.proposal_id}")
                 print(f"   Target Agent: {prop.target_agent}")
@@ -78,84 +91,81 @@ async def main():
                 print(f"   Failing Tests: {len(prop.failing_test_ids)}")
                 print(f"   Expected Improvement: +{prop.expected_improvement:.1%}")
                 print(f"   Status: {prop.status}")
+        elif failing_tests:
+            print(f"\n[WARN] {len(failing_tests)} tests failed but no proposals generated")
+            print("   Possible issues:")
+            print("   - LLM client unavailable for proposal generation")
+            print("   - All failures in unsupported dimensions")
+            print("   - Proposal generation logic error")
         else:
-            print("\n✅ No failing tests - system performing well!")
-    
+            print("\n[OK] No failing tests under current thresholds.")
+
     except Exception as e:
-        print(f"\n⚠️  Failure analysis: {e}")
+        print(f"\n[WARN] Failure analysis: {e}")
         import traceback
+
         traceback.print_exc()
-    
-    # Step 3: Mock approval and re-evaluation
-    print(f"\n\n✅ STEP 3: Simulating Human Approval of Top Proposal")
+
+    print(f"\n\n[STEP 3] Simulating human approval of top proposal")
     print("-" * 70)
-    
+
     try:
         if proposals:
             top_proposal = proposals[0]
-            
+
             print(f"\nApproving: {top_proposal.proposal_id}")
             print(f"Reasoning: {top_proposal.justification[:100]}...")
-            
+
             await prompt_optimizer.approve_rewrite(top_proposal.proposal_id)
-            print(f"✅ Approval recorded with timestamp")
-            
-            # Apply rewrites
+            print("[OK] Approval recorded with timestamp")
+
             deltas = await prompt_optimizer.apply_approved_rewrites()
-            
+
             if deltas:
-                print(f"\n✅ Applied {len(deltas)} rewrites with simulated improvements:")
+                print(f"\n[OK] Applied {len(deltas)} rewrites with simulated improvements:")
                 for prop_id, delta in deltas.items():
-                    print(f"   • {prop_id}: +{delta:.1%}")
-            
-            # Get audit trail
+                    print(f"   - {prop_id}: +{delta:.1%}")
+
             audit = prompt_optimizer.get_proposal_audit_trail(top_proposal.proposal_id)
-            print(f"\n📋 Audit Trail:")
+            print(f"\n[AUDIT] Trail:")
             print(f"   Created: {audit['created_at']}")
             print(f"   Status: {audit['status']}")
             print(f"   Approval Timestamp: {audit['approval_timestamp']}")
             print(f"   Expected Delta: +{audit['expected_improvement']:.1%}")
             print(f"   Actual Delta: +{audit['actual_performance_delta']:.1%}")
-    
-    except Exception as e:
-        print(f"\n⚠️  Approval simulation: {e}")
-        import traceback
-        traceback.print_exc()
-    
-    # Final summary
-    print(f"\n\n" + "="*70)
-    print("EVALUATION PIPELINE COMPLETE")
-    print("="*70)
-    print("""
-Summary:
-✅ Ran 15 comprehensive test cases (baseline, ambiguous, adversarial)
-✅ Scored on 6 dimensions with justifications
-✅ Identified failing tests by performance dimension
-✅ Generated LLM-powered prompt rewrite proposals
-✅ Simulated human approval process
-✅ Built complete audit trail
 
-Key Metrics:
-• Multi-dimensional scoring framework
-• Adversarial robustness testing
-• Self-improvement loop with human oversight
-• Full reproducibility and auditability
+    except Exception as e:
+        print(f"\n[WARN] Approval simulation: {e}")
+        import traceback
+
+        traceback.print_exc()
+
+    print(f"\n\n" + "=" * 70)
+    print("EVALUATION PIPELINE COMPLETE")
+    print("=" * 70)
+    print(
+        """
+Summary:
+- Ran 15 test cases (baseline, ambiguous, adversarial)
+- Scored on 6 dimensions with justifications
+- Identified failing tests by performance dimension
+- Generated LLM-powered prompt rewrite proposals where applicable
+- Simulated human approval process
+- Built audit trail (SQLite)
 
 Next Steps:
-1. Run full API server: python api.py
-2. Test endpoints with curl/Postman
-3. Deploy with Docker: docker-compose up
-4. Monitor performance over time
-5. Approve/reject rewrites via /meta/approve endpoint
+1. Run API server: python api.py
+2. Test endpoints with curl or /docs
+3. Deploy: docker compose up --build
+4. GET /diagnostics for runtime versions
+5. Approve/reject rewrites via POST /meta/approve
 
-For production:
-• Configure PostgreSQL for persistent storage
-• Set up Redis for distributed context
-• Enable SSE streaming for real-time updates
-• Configure monitoring and alerting
-• Run continuous evaluation loop
-    """)
-    print("="*70 + "\n")
+Notes:
+- Use Python 3.11 or 3.12 for best compatibility (see README).
+"""
+    )
+    print("=" * 70 + "\n")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -73,7 +73,13 @@ class SQLLookupTool(BaseTool):
         try:
             # Convert NL to SQL (simplified)
             sql = self._nl_to_sql(nl_query)
-            
+            if not self._is_safe_select(sql):
+                return ToolResult(
+                    success=False,
+                    data=None,
+                    error="Only single-statement SELECT queries are allowed",
+                )
+
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             cursor.execute(sql)
@@ -113,3 +119,10 @@ class SQLLookupTool(BaseTool):
             return "SELECT name, entity_type, description FROM entities WHERE entity_type='library'"
         else:
             return "SELECT * FROM entities LIMIT 10"
+
+    def _is_safe_select(self, sql: str) -> bool:
+        s = (sql or "").strip().lower()
+        if not s.startswith("select"):
+            return False
+        banned = (";", "attach", "pragma", "delete", "insert", "update", "drop", "create", "replace")
+        return not any(b in s for b in banned)

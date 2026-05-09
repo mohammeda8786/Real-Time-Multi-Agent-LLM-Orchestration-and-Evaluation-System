@@ -3,15 +3,27 @@ Background Worker - Processes evaluation jobs and prompt rewrites
 """
 
 import asyncio
+import json
 import logging
 from datetime import datetime
-from app.evaluation.pipeline import EvaluationPipeline
-from app.meta.prompt_optimizer import SelfImprovingPromptLoop
-from app.agents.orchestrator import OrchestratorAgent
-import json
+
+from app.platform.runtime import (
+    configure_runtime_warnings,
+    configure_stdio_utf8,
+    warn_unsupported_python,
+)
+
+configure_stdio_utf8()
+configure_runtime_warnings()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+warn_unsupported_python()
+
+from app.agents.orchestrator import OrchestratorAgent
+from app.evaluation.pipeline import EvaluationPipeline
+from app.meta.prompt_optimizer import SelfImprovingPromptLoop
 
 class BackgroundWorker:
     """Process long-running tasks asynchronously"""

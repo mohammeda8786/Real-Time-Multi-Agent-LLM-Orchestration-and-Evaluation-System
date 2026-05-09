@@ -8,6 +8,11 @@ import json
 import sys
 from datetime import datetime
 
+from app.platform.runtime import configure_runtime_warnings, configure_stdio_utf8
+
+configure_stdio_utf8()
+configure_runtime_warnings()
+
 print("\n" + "="*60)
 print("MEGA.AI - COMPLETE TEST SUITE")
 print("="*60 + "\n")
@@ -26,9 +31,9 @@ try:
     from app.tools import WebSearchTool, CodeExecutionTool, SQLLookupTool, SelfReflectionTool
     from app.context.budget_manager import ContextBudgetManager
     from app.llm_client import LLMClient
-    print("✅ All imports successful\n")
+    print("[OK] All imports successful\n")
 except Exception as e:
-    print(f"❌ Import failed: {e}\n")
+    print(f"[ERROR] Import failed: {e}\n")
     sys.exit(1)
 
 # Test 2: LLM Client
@@ -37,9 +42,9 @@ try:
     llm = LLMClient()
     text = "Hello, world!"
     tokens = llm.count_tokens(text)
-    print(f"✅ LLM client ready (token count: {tokens})\n")
+    print(f"[OK] LLM client ready (token count: {tokens})\n")
 except Exception as e:
-    print(f"❌ LLM client failed: {e}\n")
+    print(f"[ERROR] LLM client failed: {e}\n")
 
 # Test 3: Tool System
 print("[TEST 3/5] Tool System (with retry)...")
@@ -53,26 +58,26 @@ try:
     result = asyncio.run(web_search.call_with_retry(query="Python programming"))
     assert result.success, "Web search failed"
     assert len(result.data["results"]) > 0, "No search results"
-    print(f"✅ Web search: {len(result.data['results'])} results")
+    print(f"[OK] Web search: {len(result.data['results'])} results")
     
     # Test code execution (safe code)
     result = asyncio.run(code_exec.call_with_retry(code="print('Hello')"))
     assert result.success, "Code execution failed"
-    print(f"✅ Code execution: {result.data['exit_code']} (success)")
+    print(f"[OK] Code execution: {result.data['exit_code']} (success)")
     
     # Test SQL lookup
     result = asyncio.run(sql_lookup.call_with_retry(nl_query="languages"))
     assert result.success, "SQL lookup failed"
-    print(f"✅ SQL lookup: {len(result.data.get('results', []))} entities")
+    print(f"[OK] SQL lookup: {len(result.data.get('results', []))} entities")
     
     # Test self-reflection
     self_reflection.record_execution("agent1", "session1", "output1")
     result = asyncio.run(self_reflection.call_with_retry(agent_id="agent1", session_id="session1"))
     assert result.success, "Self-reflection failed"
-    print(f"✅ Self-reflection: {result.data['execution_count']} recorded\n")
+    print(f"[OK] Self-reflection: {result.data['execution_count']} recorded\n")
     
 except Exception as e:
-    print(f"❌ Tool system failed: {e}\n")
+    print(f"[ERROR] Tool system failed: {e}\n")
     import traceback
     traceback.print_exc()
 
@@ -94,12 +99,12 @@ try:
     assert remaining == 2400, f"Expected 2400 remaining, got {remaining}"
     
     report = budget_mgr.get_budget_report(context)
-    print(f"✅ Budget manager: {len(context.budgets)} agents tracked")
+    print(f"[OK] Budget manager: {len(context.budgets)} agents tracked")
     print(f"   Total: {report['total_allocated']} allocated, {report['total_used']} used")
     print(f"   RAG utilization: {report['per_agent'][AgentType.RAG]['utilization_percent']:.1f}%\n")
     
 except Exception as e:
-    print(f"❌ Budget manager failed: {e}\n")
+    print(f"[ERROR] Budget manager failed: {e}\n")
     import traceback
     traceback.print_exc()
 
@@ -125,7 +130,7 @@ try:
     print()
     
 except Exception as e:
-    print(f"❌ Evaluation pipeline failed: {e}\n")
+    print(f"[ERROR] Evaluation pipeline failed: {e}\n")
     import traceback
     traceback.print_exc()
 
@@ -133,7 +138,7 @@ print("="*60)
 print("TEST SUMMARY")
 print("="*60)
 print("""
-✅ All components verified and functional!
+[OK] All components verified (see messages above for any [ERROR] lines).
 
 Next Steps:
 1. START API SERVER:

@@ -6,8 +6,14 @@ Run: python test_endpoints.py
 
 import asyncio
 import json
-import httpx
 from datetime import datetime
+
+import httpx
+
+from app.platform.runtime import configure_runtime_warnings, configure_stdio_utf8
+
+configure_stdio_utf8()
+configure_runtime_warnings()
 
 BASE_URL = "http://localhost:8000"
 TEST_QUERY = "What is Python used for?"
@@ -19,23 +25,35 @@ print("="*70 + "\n")
 async def test_endpoints():
     async with httpx.AsyncClient() as client:
         
-        # Test 1: Health Check
-        print("[TEST 1/5] GET /health")
+        # Test 1: Diagnostics
+        print("[TEST 1/6] GET /diagnostics")
+        try:
+            response = await client.get(f"{BASE_URL}/diagnostics", timeout=10.0)
+            data = response.json()
+            print(f"[OK] Status: {response.status_code}")
+            print(f"   python: {data.get('python_version')} ({data.get('python_support_tier')})")
+            print(f"   groq: {data.get('groq_version')} chromadb: {data.get('chromadb_version')} pydantic: {data.get('pydantic_version')}\n")
+        except Exception as e:
+            print(f"[ERROR] Failed: {e}\n")
+            return
+
+        # Test 2: Health Check
+        print("[TEST 2/6] GET /health")
         try:
             response = await client.get(f"{BASE_URL}/health")
             data = response.json()
-            print(f"✅ Status: {response.status_code}")
+            print(f"[OK] Status: {response.status_code}")
             print(f"   Server status: {data.get('status')}")
-            print(f"   LLM: {data.get('llm')}")
-            print(f"   RAG: {data.get('rag')}\n")
+            print(f"   python_support_tier: {data.get('python_support_tier')}")
+            print(f"   jobs_in_memory: {data.get('jobs_in_memory')}\n")
         except Exception as e:
-            print(f"❌ Failed: {e}\n")
+            print(f"[ERROR] Failed: {e}\n")
             return
         
         job_id = None
         
-        # Test 2: Submit Query
-        print("[TEST 2/5] POST /submit")
+        # Test 3: Submit Query
+        print("[TEST 3/6] POST /submit")
         try:
             payload = {"query": TEST_QUERY}
             response = await client.post(
@@ -46,7 +64,7 @@ async def test_endpoints():
             data = response.json()
             job_id = data.get('job_id')
             
-            print(f"✅ Status: {response.status_code}")
+            print(f"[OK] Status: {response.status_code}")
             print(f"   Job ID: {job_id}")
             print(f"   Query: {data.get('query')}")
             print(f"   Answer: {data.get('answer')[:100]}...")
@@ -56,17 +74,17 @@ async def test_endpoints():
                   f"{stats.get('claims_generated')} claims, " +
                   f"{stats.get('budget_violations')} violations\n")
         except Exception as e:
-            print(f"❌ Failed: {e}\n")
+            print(f"[ERROR] Failed: {e}\n")
             return
         
-        # Test 3: Get Execution Trace
+        # Test 4: Get Execution Trace
         if job_id:
-            print("[TEST 3/5] GET /trace/{job_id}")
+            print("[TEST 4/6] GET /trace/{job_id}")
             try:
                 response = await client.get(f"{BASE_URL}/trace/{job_id}", timeout=10.0)
                 data = response.json()
                 
-                print(f"✅ Status: {response.status_code}")
+                print(f"[OK] Status: {response.status_code}")
                 print(f"   Job ID: {data.get('job_id')}")
                 print(f"   Query: {data.get('query')}")
                 print(f"   Decisions made: {len(data.get('decisions', []))}")
@@ -75,36 +93,36 @@ async def test_endpoints():
                 print(f"   Critiques: {len(data.get('critiques', []))}")
                 print(f"   Final answer: {data.get('final_answer', '')[:100]}...\n")
             except Exception as e:
-                print(f"⚠️  Warning: {e}")
+                print(f"[WARN] {e}")
                 print("   (Trace may not be available immediately)\n")
         
-        # Test 4: Get Evaluation Summary
-        print("[TEST 4/5] GET /eval/latest")
+        # Test 5: Get Evaluation Summary
+        print("[TEST 5/6] GET /eval/latest")
         try:
             response = await client.get(f"{BASE_URL}/eval/latest", timeout=10.0)
             data = response.json()
             
-            print(f"✅ Status: {response.status_code}")
+            print(f"[OK] Status: {response.status_code}")
             print(f"   Run ID: {data.get('run_id')}")
             
             summary = data.get('summary', {})
-            if summary:
+            if summary and isinstance(summary, dict):
                 for category, stats in summary.items():
                     if isinstance(stats, dict) and 'average_score' in stats:
-                        print(f"   • {category}: {stats.get('average_score', 0):.1%} avg")
+                        print(f"   - {category}: {stats.get('average_score', 0):.1%} avg")
             
-            dim_avg = data.get('dimension_averages', {})
+            dim_avg = data.get('dimension_averages', data.get('overall_scores', {}))
             if dim_avg:
-                print(f"\n   Dimension Averages:")
+                print(f"\n   Dimension averages (sample):")
                 for dim, score in sorted(dim_avg.items())[:3]:
-                    print(f"   • {dim}: {score:.1%}")
+                    print(f"   - {dim}: {score:.1%}")
             print()
         except Exception as e:
-            print(f"⚠️  Warning: {e}")
+            print(f"[WARN] {e}")
             print("   (Evaluation summary may not be available)\n")
         
-        # Test 5: Approve Rewrite (Mock)
-        print("[TEST 5/5] POST /meta/approve")
+        # Test 6: Approve Rewrite (Mock)
+        print("[TEST 6/6] POST /meta/approve")
         try:
             payload = {
                 "rewrite_id": "rewrite_test_001",
@@ -117,13 +135,12 @@ async def test_endpoints():
             )
             data = response.json()
             
-            print(f"✅ Status: {response.status_code}")
+            print(f"[OK] Status: {response.status_code}")
             print(f"   Rewrite ID: {data.get('rewrite_id')}")
             print(f"   Approved: {data.get('approved')}")
-            print(f"   Status: {data.get('status')}")
-            print(f"   Message: {data.get('message')}\n")
+            print(f"   Status: {data.get('status')}\n")
         except Exception as e:
-            print(f"⚠️  Warning: {e}\n")
+            print(f"[WARN] {e}\n")
 
 print("Starting endpoint tests...")
 print("(Make sure API server is running: python api.py)\n")
@@ -131,7 +148,7 @@ print("(Make sure API server is running: python api.py)\n")
 try:
     asyncio.run(test_endpoints())
 except Exception as e:
-    print(f"\n❌ Test suite failed: {e}")
+    print(f"\n[ERROR] Test suite failed: {e}")
     print("\nMake sure the API server is running:")
     print("  python api.py")
 
