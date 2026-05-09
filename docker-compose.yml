@@ -1,0 +1,109 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mega_ai_api
+    ports:
+      - "8000:8000"
+    environment:
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - LLM_MODEL=${LLM_MODEL:-llama-3.1-70b-versatile}
+      - ENVIRONMENT=production
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./chroma_db:/app/chroma_db
+      - ./logs:/app/logs
+    depends_on:
+      - database
+      - chromadb
+    command: python -m uvicorn api:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - mega_ai_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: mega_ai_chromadb
+    ports:
+      - "8001:8000"
+    environment:
+      - PERSIST_DIRECTORY=/data
+    volumes:
+      - ./chroma_db:/data
+    networks:
+      - mega_ai_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  database:
+    image: postgres:15-alpine
+    container_name: mega_ai_postgres
+    environment:
+      - POSTGRES_DB=mega_ai
+      - POSTGRES_USER=mega_ai_user
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-secure_password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init_db.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - mega_ai_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mega_ai_user -d mega_ai"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: mega_ai_worker
+    environment:
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - LLM_MODEL=${LLM_MODEL:-llama-3.1-70b-versatile}
+      - DATABASE_URL=postgresql://mega_ai_user:${DB_PASSWORD:-secure_password}@database:5432/mega_ai
+      - ENVIRONMENT=production
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./chroma_db:/app/chroma_db
+      - ./logs:/app/logs
+    depends_on:
+      database:
+        condition: service_healthy
+      chromadb:
+        condition: service_healthy
+    networks:
+      - mega_ai_network
+    command: python worker.py
+
+  logs-viewer:
+    image: amir20/dozzle:latest
+    container_name: mega_ai_logs
+    ports:
+      - "9999:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - mega_ai_network
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
+
+networks:
+  mega_ai_network:
+    driver: bridge
