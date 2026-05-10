@@ -23,7 +23,7 @@ async def main():
     
     for query in test_queries:
         print(f"\n{'─'*50}")
-        print(f"📝 QUERY: {query}")
+        print(f"QUERY: {query}")
         print(f"{'─'*50}")
         
         context = SharedContext(original_query=query)
@@ -32,15 +32,15 @@ async def main():
             if event_type == "routing_decision":
                 print(f"  → {data.get('agent')}: {data.get('reasoning', '')[:50]}...")
             elif event_type == "rag_complete":
-                print(f"  ✅ RAG: {data.get('chunks_retrieved')} chunks, {data.get('claims_generated')} claims")
+                print(f"  RAG: {data.get('chunks_retrieved')} chunks, {data.get('claims_generated')} claims")
             elif event_type == "synthesizer_complete":
-                print(f"  ✅ Final answer ready")
+                print(f"  Final answer ready")
         
         result = await orchestrator.process(context, callback)
         
-        print(f"\n📋 Final Answer Preview: {result.synthesized_answer[:300] if result.synthesized_answer else 'None'}...")
-        print(f"📊 Retrieved Chunks: {len(result.retrieved_chunks)}")
-        print(f"📝 Claims Generated: {len(result.claims)}")
+        print(f"\nFinal Answer Preview: {result.synthesized_answer[:300] if result.synthesized_answer else 'None'}...")
+        print(f"Retrieved Chunks: {len(result.retrieved_chunks)}")
+        print(f"Claims Generated: {len(result.claims)}")
 
 if __name__ == "__main__":
     asyncio.run(main())

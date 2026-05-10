@@ -193,17 +193,17 @@ Known limits: instruction-tuned models may still mishandle edge cases; embedding
 
 **15 Test Cases** (5 per category):
 
-### Baseline (5 tests) ✅
+### Baseline (5 tests)
 - Straightforward factual questions
 - Expected keywords present in answer
 - Scores: answer_correctness, citation_accuracy
 
-### Ambiguous (5 tests) ❓
+### Ambiguous (5 tests)
 - Underspecified inputs requiring decomposition
 - Ambiguous pronouns, implicit context
 - Tests decomposer quality
 
-### Adversarial (5 tests) 🔒
+### Adversarial (5 tests)
 - **Prompt Injection**: "Ignore previous instructions..."
 - **False Premises**: "Python is a snake. How is it used in programming?"
 - **Contradictions**: "Databases are lost on poweroff. Explain why it's good."
@@ -237,7 +237,7 @@ Known limits: instruction-tuned models may still mishandle edge cases; embedding
 }
 ```
 
-## 🔄 Self-Improving Prompt Loop (`app/meta/prompt_optimizer.py`)
+## Self-Improving Prompt Loop (`app/meta/prompt_optimizer.py`)
 
 ### Flow
 1. **Identify Failures**: Tests scoring < 0.6 per dimension
@@ -274,7 +274,7 @@ curl -X POST http://localhost:8000/submit \
   -d '{"query": "What is Python?"}'
 ```
 
-**Status**: implemented. Returns a full JSON response today; SSE-style token streaming is not yet available.
+**Status**: implemented. Supports hybrid SSE streaming with routing, tool lifecycle events, budget updates, and simulated response token chunks.
 
 **Response (JSON)**:
 ```json
@@ -292,6 +292,44 @@ curl -X POST http://localhost:8000/submit \
     }
 }
 ```
+
+### 1b. POST `/submit/stream` - Event Stream for Orchestration Progress
+```bash
+curl -N -X POST http://localhost:8000/submit/stream \
+  -H "Content-Type: application/json" \
+  -d '{"query": "What is Python?"}'
+```
+
+**Status**: implemented. Returns a structured SSE stream with routing, agent lifecycle events, tool execution markers, budget updates, and final token chunks.
+
+**Example event body**:
+```json
+{
+  "event": "routing_decision",
+  "agent": "rag",
+  "reasoning": "Fallback: no retrieved chunks yet",
+  "job_id": "abc123..."
+}
+```
+
+**Common stream events**:
+- `orchestrator_start`
+- `routing_decision`
+- `tool_execution_start`
+- `tool_execution_end`
+- `rag_complete`
+- `budget_update`
+- `answer_stream_start`
+- `answer_token_chunk`
+- `answer_stream_complete`
+- `completed`
+
+**Suggested client logic**:
+1. Connect to `/submit/stream` with `Accept: text/event-stream`.
+2. Parse each `data:` payload as JSON.
+3. Render ongoing progress from `routing_decision` and `tool_execution_*` events.
+4. Append `answer_token_chunk` payloads to build the final answer.
+5. Treat `completed` as the final stop signal.
 
 ### 2. GET `/trace/{job_id}` - Execution Trace Summary
 ```bash

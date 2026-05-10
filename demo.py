@@ -12,15 +12,15 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from app.platform.runtime import (
     configure_runtime_warnings,
     configure_stdio_utf8,
+    enforce_supported_python,
     log_startup_stage,
     stage_timer,
-    warn_unsupported_python,
 )
 
 configure_stdio_utf8()
 configure_runtime_warnings()
 logging.basicConfig(level=logging.INFO)
-warn_unsupported_python()
+enforce_supported_python()
 
 
 async def main():

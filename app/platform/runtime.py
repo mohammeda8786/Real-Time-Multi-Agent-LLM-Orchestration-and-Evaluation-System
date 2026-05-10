@@ -49,18 +49,16 @@ def configure_runtime_warnings() -> None:
         )
 
 
-def warn_unsupported_python() -> None:
-    """Log actionable guidance; never raises."""
+def enforce_supported_python() -> None:
+    """Reject unsupported Python versions while warning on newer, untested releases."""
     vi = sys.version_info[:2]
     if vi < MIN_PYTHON:
-        logger.error(
-            "python_version_unsupported",
-            extra={
-                "detail": f"Python {vi[0]}.{vi[1]} is below minimum {MIN_PYTHON[0]}.{MIN_PYTHON[1]}. "
-                "Upgrade to Python 3.11 or 3.12.",
-            },
+        message = (
+            f"Python {vi[0]}.{vi[1]} is below minimum supported version "
+            f"{MIN_PYTHON[0]}.{MIN_PYTHON[1]}. Upgrade to Python 3.11 or 3.12."
         )
-        return
+        logger.error("python_version_unsupported", extra={"detail": message})
+        raise SystemExit(message)
     if vi >= RECOMMENDED_MAX_EXCLUSIVE:
         logger.warning(
             "python_version_not_fully_supported",
@@ -70,6 +68,16 @@ def warn_unsupported_python() -> None:
                 "use Python 3.11 or 3.12 for the most stable experience.",
             },
         )
+
+
+def warn_unsupported_python() -> None:
+    """Maintain compatibility shim for older call sites."""
+    try:
+        enforce_supported_python()
+    except SystemExit:
+        raise
+    except Exception:
+        pass
 
 
 def _pkg_version(dist_name: str) -> str:

@@ -16,6 +16,7 @@ from app.orchestration.tool_mediator import ToolMediator
 from datetime import datetime
 import logging
 import asyncio
+import math
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,14 @@ class OrchestratorAgent(BaseAgent):
         self.llm = LLMClient()  # ← LLM for routing
         self.budget_manager = ContextBudgetManager()
         logger.info("[OK] Orchestrator initialized with LLM routing")
+
+    def is_ready(self) -> bool:
+        try:
+            rag_agent = self.sub_agents.get(AgentType.RAG)
+            vector_ready = rag_agent and rag_agent.pipeline.vector_store.count() >= 0
+            return self.llm is not None and bool(vector_ready)
+        except Exception:
+            return False
     
     async def process(self, context: SharedContext, streaming_callback=None):
         await self._emit_event(streaming_callback, "orchestrator_start", 
@@ -55,13 +64,15 @@ class OrchestratorAgent(BaseAgent):
         mediator = ToolMediator(job_id=context.job_id)
         med_token = mediator.attach()
         try:
-            await self._initialize_budgets(context)
+            await self.budget_manager.initialize_budgets(context)
             context = await self._run_agents_loop(context, streaming_callback)
         finally:
             ToolMediator.detach(med_token)
 
         context.status = "completed"
         context.completed_at = datetime.now()
+
+        await self._stream_answer_chunks(context, streaming_callback)
 
         stats = self.llm.get_stats()
         await self._emit_event(streaming_callback, "llm_stats", 
@@ -114,6 +125,18 @@ class OrchestratorAgent(BaseAgent):
                     })
                     self.completed_agents.add(routing_decision.next_agent)
                     self.last_agent_run = routing_decision.next_agent
+
+                    budget_used = routing_decision.context_budget_allocation or 0
+                    budget_ok = await self._consume_budget(context, budget_used, f"agent_{agent_name}_execution")
+                    remaining = context.budgets.get(routing_decision.next_agent).remaining_tokens if routing_decision.next_agent in context.budgets else None
+                    await self._emit_event(
+                        streaming_callback,
+                        "budget_update",
+                        agent=agent_name,
+                        allocated=budget_used,
+                        remaining_tokens=remaining,
+                        budget_ok=budget_ok,
+                    )
                     
                 except Exception as e:
                     # Per-agent failure isolation
@@ -156,7 +179,27 @@ class OrchestratorAgent(BaseAgent):
                 })
 
         return context
-    
+
+    async def _stream_answer_chunks(self, context: SharedContext, streaming_callback):
+        if streaming_callback is None:
+            return
+        answer = (context.synthesized_answer or "").strip()
+        if not answer:
+            return
+
+        total_chunks = max(1, math.ceil(len(answer) / 80))
+        await self._emit_event(streaming_callback, "answer_stream_start", total_chunks=total_chunks)
+        for idx in range(0, len(answer), 80):
+            chunk = answer[idx : idx + 80]
+            await self._emit_event(
+                streaming_callback,
+                "answer_token_chunk",
+                token=chunk,
+                index=(idx // 80) + 1,
+                total_chunks=total_chunks,
+            )
+        await self._emit_event(streaming_callback, "answer_stream_complete", total_chunks=total_chunks)
+
     async def _llm_decide_next_agent(self, context: SharedContext):
         """Use LLM to decide which agent runs next"""
 

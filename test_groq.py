@@ -38,7 +38,7 @@ async def main():
     for key, value in stats.items():
         print(f"   {key}: {value}")
     
-    print("\n✅ GROQ LLM IS WORKING PERFECTLY (FREE)!")
+    print("\nGROQ LLM is working correctly")
 
 if __name__ == "__main__":
     asyncio.run(main())

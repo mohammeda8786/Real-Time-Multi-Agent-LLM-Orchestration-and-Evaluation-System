@@ -19,6 +19,7 @@ from app.tools.web_search import WebSearchTool
 from app.tools.code_execution import CodeExecutionTool
 from app.tools.sql_lookup import SQLLookupTool
 from app.tools.self_reflection import SelfReflectionTool
+from app.orchestration.tool_failure_manager import ToolFailurePolicyManager
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,7 @@ class ToolMediator:
             "sql_lookup": SQLLookupTool(),
             "self_reflection": SelfReflectionTool(),
         }
+        self.failure_manager = ToolFailurePolicyManager()
 
     def attach(self):
         return _tool_mediator_ctx.set(self)
@@ -97,6 +99,7 @@ class ToolMediator:
         arg_factory: Callable[[], Dict[str, Any]],
         *,
         dedupe: bool = True,
+        streaming_callback: Optional[Callable[[str, dict], Any]] = None,
     ) -> Tuple[bool, Any]:
         """
         arg_factory is a zero-arg callable so we only build heavy args if the call proceeds.
@@ -126,9 +129,8 @@ class ToolMediator:
             return True, {"deduped": True, "summary": self._seen[key]}
 
         tool = self._tools[tool_name]
-        start = asyncio.get_event_loop().time()
-        result = await tool.call_with_retry(**args)
-        latency_ms = (asyncio.get_event_loop().time() - start) * 1000
+        result = await self.failure_manager.execute_tool(tool, tool_name, context, args, streaming_callback=streaming_callback)
+        latency_ms = getattr(result, "latency_ms", 0.0)
         self._calls_used += 1
 
         summary = "ok" if result.success else (result.error or "failed")

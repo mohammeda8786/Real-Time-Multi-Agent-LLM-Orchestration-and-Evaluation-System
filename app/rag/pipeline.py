@@ -3,10 +3,13 @@ RAG Pipeline - Complete orchestration of all RAG components
 """
 
 from typing import List, Dict, Optional, Any
+import logging
 import os
 
 from app.rag.loaders import PDFLoader, WebLoader
 from app.rag.chunking import TextChunker
+
+logger = logging.getLogger(__name__)
 from app.rag.embedding import EmbeddingModel
 from app.rag.vectordb import ChromaStore
 from app.rag.retrieval import Retriever, Reranker
@@ -47,20 +50,21 @@ class RAGPipeline:
         self.retriever = Retriever(self.vector_store, self.embedding)
         self.reranker = Reranker()
         
-        print("="*50)
-        print("RAG Pipeline Initialized")
-        print(f"   Vector DB: {vector_db_type}")
-        print(f"   Embedding: {self.embedding.model_name}")
-        print(f"   Chunk Size: {chunk_size}")
-        print("="*50)
+        logger.info(
+            "rag_pipeline_initialized",
+            extra={
+                "vector_db_type": vector_db_type,
+                "embedding_model": self.embedding.model_name,
+                "chunk_size": chunk_size,
+            },
+        )
     
     def index_documents(self, source: str, **kwargs) -> int:
         """
         Index documents from various sources
         source: 'pdf', 'web', 'directory', 'sample'
         """
-        print("\nINDEXING DOCUMENTS")
-        print("-"*40)
+        logger.info("indexing_documents", extra={"source": source, "document_count": len(documents)})
         
         # Step 1: Load documents
         documents = []
@@ -82,7 +86,7 @@ class RAGPipeline:
         else:
             raise ValueError(f"Unknown source: {source}")
         
-        print(f"Loaded {len(documents)} documents")
+        logger.info("documents_loaded", extra={"count": len(documents)})
         
         # Step 2: Chunk documents
         all_chunks = []
@@ -90,13 +94,13 @@ class RAGPipeline:
             chunks = self.chunker.chunk_document(doc, strategy="recursive")
             all_chunks.extend(chunks)
         
-        print(f"Created {len(all_chunks)} chunks")
+        logger.info("chunks_created", extra={"chunk_count": len(all_chunks)})
         
         # Step 3: Generate embeddings
         texts = [chunk["text"] for chunk in all_chunks]
         embeddings = self.embedding.encode(texts)
         
-        print(f"Generated {len(embeddings)} embeddings")
+        logger.info("embeddings_generated", extra={"count": len(embeddings)})
         
         # Step 4: Store in vector database
         ids = [chunk["chunk_id"] for chunk in all_chunks]
@@ -111,8 +115,7 @@ class RAGPipeline:
         
         self.vector_store.add_documents(ids, embeddings.tolist(), texts, metadatas)
         
-        print(f"Stored {self.vector_store.count()} chunks")
-        print("="*50)
+        logger.info("chunks_stored", extra={"stored_count": self.vector_store.count()})
         
         return len(all_chunks)
     
@@ -120,18 +123,17 @@ class RAGPipeline:
         """
         Retrieve relevant documents for a query
         """
-        print(f"\nRETRIEVING: {query[:100]}")
-        print(f"   Hops: {hops}, Top K: {top_k}")
+        logger.info("retrieving", extra={"query_preview": query[:100], "hops": hops, "top_k": top_k})
         
         # Retrieve
         results = self.retriever.multi_hop(query, hops=hops, n_results_per_hop=top_k)
         
-        print(f"   Retrieved {len(results)} documents")
+        logger.info("retrieved_documents", extra={"count": len(results)})
         
         # Rerank if requested
         if rerank and results:
             results = self.reranker.rerank(query, results)
-            print(f"   Reranked results")
+            logger.info("reranked_results", extra={"query": query[:100], "result_count": len(results)})
         
         # Limit to top_k
         results = results[:top_k]
@@ -182,14 +184,31 @@ JSON:"""
             )
 
         merged: List[Dict] = list(hop1)
-        for fq in follow_ups:
-            merged.extend(self.retriever.single_hop(fq, n_results=top_k))
-
-        if not follow_ups and hops >= 2 and hop1:
-            concepts = self.retriever._extract_concepts(hop1)
-            refined = f"{query} {concepts}"
-            merged.extend(self.retriever.single_hop(refined, n_results=top_k))
-            reasoning_path.append({"step": 2, "fallback_query": refined})
+        if hop1 and hops >= 2:
+            top_text = hop1[0].get("text", "")[:250]
+            top_chunk_id = hop1[0].get("chunk_id") or hop1[0].get("metadata", {}).get("chunk_id")
+            if follow_ups:
+                for fq in follow_ups:
+                    dependent_query = f"{query} {top_text} {fq}"
+                    merged.extend(self.retriever.single_hop(dependent_query, n_results=top_k))
+                reasoning_path.append(
+                    {
+                        "step": 2,
+                        "planned_queries": follow_ups,
+                        "source_chunk_id": top_chunk_id,
+                        "dependent_query_context": top_text,
+                    }
+                )
+            else:
+                refined = f"{query} Additional evidence from first-hop result: {top_text}"
+                merged.extend(self.retriever.single_hop(refined, n_results=top_k))
+                reasoning_path.append(
+                    {
+                        "step": 2,
+                        "fallback_query": refined,
+                        "source_chunk_id": top_chunk_id,
+                    }
+                )
 
         merged = self.retriever.dedupe_results(merged)
         if merged:

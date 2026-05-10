@@ -19,9 +19,9 @@ def main():
     pipeline = RAGPipeline(vector_db_type="chroma")
     
     # Index sample documents
-    print("\n📚 Indexing sample documents...")
+    print("\nIndexing sample documents...")
     num_chunks = pipeline.index_documents(source="sample")
-    print(f"✅ Indexed {num_chunks} chunks")
+    print(f"Indexed {num_chunks} chunks")
     
     # Test queries
     test_queries = [
@@ -32,15 +32,15 @@ def main():
     
     for query in test_queries:
         print(f"\n{'─'*50}")
-        print(f"📝 QUERY: {query}")
+        print(f"QUERY: {query}")
         print(f"{'─'*50}")
         
         results = pipeline.search(query, hops=2, top_k=3)
         
         for result in results:
-            print(f"\n{result['citation']} 📄 Source: {result['source']}")
-            print(f"   📊 Score: {result['similarity_score']:.3f}")
-            print(f"   📝 Content: {result['text'][:150]}...")
+            print(f"\n{result['citation']} Source: {result['source']}")
+            print(f"   Score: {result['similarity_score']:.3f}")
+            print(f"   Content: {result['text'][:150]}...")
     
     # Show status
     print("\n" + "="*60)

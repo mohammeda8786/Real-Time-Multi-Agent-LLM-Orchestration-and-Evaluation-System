@@ -24,7 +24,11 @@ class EmbeddingModel:
             print(f"Loading embedding model: {self.model_name}...")
             
             self.model = SentenceTransformer(self.model_name)
-            self.dimension = self.model.get_sentence_embedding_dimension()
+            self.dimension = getattr(self.model, "get_embedding_dimension", None)
+            if callable(self.dimension):
+                self.dimension = self.model.get_embedding_dimension()
+            else:
+                self.dimension = self.model.get_sentence_embedding_dimension()
             
             load_time = time.time() - start_time
             print(f"Loaded embedding model: {self.model_name}")

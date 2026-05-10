@@ -9,6 +9,7 @@ import hashlib
 import json
 import tempfile
 import os
+import sys
 
 class CodeExecutionTool(BaseTool):
     """Execute Python code in a sandbox with timeout"""
@@ -65,7 +66,7 @@ class CodeExecutionTool(BaseTool):
         def run():
             try:
                 result = subprocess.run(
-                    ["python", temp_file],
+                    [sys.executable, temp_file],
                     capture_output=True,
                     text=True,
                     timeout=self.timeout

@@ -120,10 +120,10 @@ try:
     ambiguous = [t for t in eval_pipeline.test_cases if t.category == "ambiguous"]
     adversarial = [t for t in eval_pipeline.test_cases if t.category == "adversarial"]
     
-    print(f"✅ Test cases created:")
-    print(f"   • {len(baseline)} baseline tests")
-    print(f"   • {len(ambiguous)} ambiguous tests")
-    print(f"   • {len(adversarial)} adversarial tests")
+    print(f"Test cases created:")
+    print(f"   - {len(baseline)} baseline tests")
+    print(f"   - {len(ambiguous)} ambiguous tests")
+    print(f"   - {len(adversarial)} adversarial tests")
     print(f"\n   Sample tests:")
     for test in eval_pipeline.test_cases[:3]:
         print(f"   - {test.id}: {test.query[:50]}...")

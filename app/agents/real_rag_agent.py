@@ -44,6 +44,7 @@ class RealRAGAgent(BaseAgent):
                 "web_search",
                 lambda: {"query": query[:200], "limit": 3},
                 dedupe=True,
+                streaming_callback=streaming_callback,
             )
 
         grounded_snippets = []
@@ -64,8 +65,8 @@ class RealRAGAgent(BaseAgent):
         await self._emit_event(
             streaming_callback,
             "rag_complete",
-            chunks=len(context.retrieved_chunks),
-            claims=len(context.claims),
+            chunks_retrieved=len(context.retrieved_chunks),
+            claims_generated=len(context.claims),
         )
 
         return context

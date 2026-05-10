@@ -135,6 +135,9 @@ class SharedContext(BaseModel):
     # Tool calls (orchestrator-mediated); persisted for eval and audits
     tool_audit: List[Dict[str, Any]] = []
     
+    # Evaluation / trace metadata
+    evaluation_trace: List[Dict[str, Any]] = []
+    
     # Timestamps
     created_at: datetime = Field(default_factory=datetime.now)
     completed_at: Optional[datetime] = None

@@ -176,10 +176,12 @@ class EvaluationPipeline:
             failure_reasons=failures,
             answer_preview=answer[:240],
             raw_context={
+                "full_context": ctx.model_dump(mode="json"),
                 "chunks": len(chunks),
                 "claims": len(claims),
                 "critiques": len(critiques),
                 "tools": len(tools),
+                "policy_violations": len(violations),
             },
         )
 
@@ -335,6 +337,7 @@ class EvaluationPipeline:
             "best_performers": [{"test_id": x.test_id, "score": x.composite} for x in best],
             "worst_performers": [{"test_id": x.test_id, "score": x.composite} for x in worst],
             "cases": serialized,
+            "evaluation_trace": [r.raw_context for r in results],
             "raw_json_path_hint": "persisted via PersistenceStore.save_evaluation",
         }
 

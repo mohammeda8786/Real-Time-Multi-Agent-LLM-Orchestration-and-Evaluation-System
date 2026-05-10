@@ -8,12 +8,12 @@ import logging
 import sys
 from datetime import datetime
 
-from app.platform.runtime import configure_runtime_warnings, configure_stdio_utf8, warn_unsupported_python
+from app.platform.runtime import configure_runtime_warnings, configure_stdio_utf8, enforce_supported_python
 
 configure_stdio_utf8()
 configure_runtime_warnings()
 logging.basicConfig(level=logging.INFO)
-warn_unsupported_python()
+enforce_supported_python()
 
 print("\n" + "=" * 70)
 print("MEGA.AI - FULL EVALUATION PIPELINE")

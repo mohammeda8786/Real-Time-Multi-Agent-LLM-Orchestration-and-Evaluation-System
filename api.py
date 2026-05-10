@@ -388,10 +388,20 @@ async def diagnostics():
 
 @app.get("/health")
 async def health():
+    orchestrator_ready = False
+    status = "degraded"
+    try:
+        orchestrator = get_orchestrator()
+        orchestrator_ready = orchestrator.is_ready()
+        status = "healthy" if orchestrator_ready else "degraded"
+    except Exception as exc:
+        status = "degraded"
+        logger.warning("health_check_orchestrator_failed", extra={"error": str(exc)})
+
     return {
-        "status": "healthy",
+        "status": status,
         "timestamp": datetime.now().isoformat(),
-        "orchestrator_ready": True,
+        "orchestrator_ready": orchestrator_ready,
         "jobs_in_memory": len(job_results),
         "python_support_tier": _python_support_tier(),
     }
